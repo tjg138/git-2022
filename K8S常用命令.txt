@@ -1,0 +1,286 @@
+问题:
+* 为什么Service IP ping不通？
+
+* 什么是PV延时绑定？
+
+* 使用了 Ingress 策略和 Ingress Controller，两者结合并实现了一个完整的Ingress 负载均衡器。使用 Ingress 进行负载分发时，Ingress Controller 基于 Ingress 规则将客户端请求直接转发到 Service 对应的后端 Endpoint（Pod）上，从而跳过 kube-proxy的转发功能，kube-proxy 不再起作用，全过程为：ingress controller + ingress 规则 ----> services。
+
+*  cAdvisor 是什么 ？  cAdvisor服务？
+
+
+##################################################################
+#								 #
+#                         Docker命令                             #
+#								 #
+##################################################################
+# 查看（表格格式）
+docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}"
+
+# 查看完整列
+docker ps --no-trunc
+
+# 查看容器日志
+docker logs -f <容器名 or ID>
+
+# 杀死容器
+docker kill <容器名 or ID> 
+
+暴露端口
+# 一共有三种形式进行端口映射
+docker -p ip:hostPort:containerPort # 映射指定地址的主机端口到容器端口
+# 例如：docker -p 127.0.0.1:3306:3306 映射本机3306端口到容器的3306端口
+
+docker -p ip::containerPort # 映射指定地址的任意可用端口到容器端口
+# 例如：docker -p 127.0.0.1::3306 映射本机的随机可用端口到容器3306端口
+
+docer -p hostPort:containerPort # 映射本机的指定端口到容器的指定端口
+# 例如：docker -p 3306:3306 # 映射本机的3306端口到容器的3306端口
+
+
+# 运行portainer
+docker run -d -p 9000:9000 --name portainer \
+    --restart=always \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v portainer_data:/data \
+    hb.cn/portainer/portainer-ce:2.9.3
+
+docker volume create portainer_data
+
+# 端口映射(运行tomcat，运行后在Windows浏览器也可以访问, URL: http://192.168.114.211:8080/)
+docker run -d -p 8080:8080 --name tomcat-jgtan jgtan/tomcat8:v8
+
+# 运行完成后删除容器（可重复运行）
+docker run --rm --name busybox-1230 busybox ls -l /
+
+# 镜像打包(save与load搭配使用)
+docker save -o test-k8s.docker jgtan/test-k8s:v1
+
+# 导入镜像包(save与load搭配使用)
+docker load < test-k8s.docker
+
+# 创建镜像（要有Dockerfile）
+docker build -t jgtan/test-k8s:v1 .
+
+# 及速运行一个容器
+docker run -it busybox /bin/sh
+
+# 运行私服容器（在master节点上执行）
+docker run -itd -v /home/mount/registry:/var/lib/registry -p 5000:5000 --restart=always --name registry registry:latest
+
+# 推送镜像到私服
+docker tag nginx:1.14.2 registry.example.com:5000/jgtan/nginx:1.14.2
+docker push registry.example.com:5000/jgtan/nginx:1.14.2
+
+# 查看私服的镜像 
+curl http://master:5000/v2/_catalog
+{"repositories":["jgtan/busybox","jgtan/nginx","jgtan/sample","jgtan/tomcat","mynode"]}
+
+# 查看私服的镜像tag
+curl http://master:5000/v2/jgtan/sample/tags/list
+{"name":"jgtan/sample","tags":["v2"]}
+
+# 删除私有仓库镜像
+第1步：docker exec -it registry sh
+第2步：cd /var/lib/registry/docker/registry/v2/repositories
+第3步：rm -rf tanbox
+第4步：registry garbage-collect /etc/docker/registry/config.yml
+
+# 导出容器中的文件系统（可以用来看容器中的日志，导出后，用tar -xvf export.tar 解压查看，例如：vim ./usr/local/tomcat/logs/catalina.2022-01-14.log）
+docker export tomcat > export.tar
+
+docker volume ls
+
+# 加入到一个容器中的网络namespace
+docker run --rm --net container:466d21337 busybox:1.35.0 nslookup kubernetes.default
+
+
+# busybox其实也有bash
+docker run --rm -it --name box registry.example.com:5000/busybox:310000 sh
+
+##################################################################
+#								 #
+#                         K8S命令                                #
+#								 #
+##################################################################
+# ---------- 各种查看 -----------------
+kubectl get nodes
+
+kubectl get pods
+
+kubectl get deployments -o wide
+
+kubectl describe pod nginx
+kubectl describe node node1
+kubectl describe svc xxxx
+
+kubectl  get pod -n kube-system
+
+kubectl get pods -o wide
+kubectl get pods -o yaml
+
+kubectl get all
+
+
+journalctl -xefu kubelet
+journalctl -f -u kubelet
+
+systemctl status kubelet
+
+systemctl restart kubelet
+
+kubectl get rs
+
+kubectl get pods --show-labels
+
+kubectl describe node node1
+
+kubectl logs -f --tail 200 -n kube-system pod/kube-flannel-ds-ks88s
+
+kubectl get nodes --show-labels
+
+kubectl -v=7 exec -it pod/nginx -- /bin/bash			#查看一个POD里的详细日志
+
+watch -n 1 kubectl -v=7 exec -it pod/mongodb-0  -- echo 'xxxx'
+watch -n 1 kubectl -v=7 exec -it pod/tomcat-8-dp-67bf8c8bdf-5lhxr  -- echo xxxx
+
+kubectl exec -it pod/nginx -c shell -- ifconfig			#指定Pod中的一个容器，调用它的ifconfig命令(解决无法进入一个pod中具体容器的问题)
+
+kubectl get pods -w -l app=nginx            # 查看pod状态持续变化
+
+kubectl get secret regcred --output="jsonpath={.data.\.dockerconfigjson}" | base64 --decode    # 查看一个secret中的base64明文
+
+
+
+
+# 根据文件部署
+[root@master ~]# kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+Warning: policy/v1beta1 PodSecurityPolicy is deprecated in v1.21+, unavailable in v1.25+
+podsecuritypolicy.policy/psp.flannel.unprivileged created
+clusterrole.rbac.authorization.k8s.io/flannel created
+clusterrolebinding.rbac.authorization.k8s.io/flannel created
+serviceaccount/flannel unchanged
+configmap/kube-flannel-cfg configured
+daemonset.apps/kube-flannel-ds created
+[root@master ~]# 
+[root@master ~]# 
+
+# 各种删除
+kubectl delete pods --all
+
+kubectl delete pod testapp
+
+kubectl detele all --all
+
+-------------- kubeadm 卸载 flannel --------------
+1、找到之前的flannel yaml 的文件，执行：
+kubectl delete -f kube-flannel.yml
+
+2、删除cni配置文件
+rm -rf /etc/cni/net.d/*
+
+3、重启kubelet ，不行的话重启服务器 reboot
+systemctl restart kubelet
+
+然后查看
+kubectl get pod -n kube-system
+
+flannel已经消失
+
+------------- 删除coredns deployment  ------------
+"您正在删除由pod控制器监视的deployment。
+这就是为什么当您删除pods中的一个时，控制器会创建另一个以确保pods的数量等于副本数的原因。
+如果您确实要删除coredns [不推荐，请删除deployment而不是pods。"
+
+kubectl delete deployment coredns -n kube-system
+
+-------------------------- k8s初始化及flannel网络插件  ------------------------------------
+# 初始化集群控制台 Control plane
+# 失败了可以用 kubeadm reset 重置 
+kubeadm init \
+  --apiserver-advertise-address=192.168.114.209 \
+  --image-repository registry.aliyuncs.com/google_containers \
+  --kubernetes-version v1.23.1 \
+  --service-cidr=10.1.0.0/16 \
+  --pod-network-cidr=10.244.0.0/16
+
+# 复制授权文件，以便 kubectl 可以有权限访问集群
+rm -rf $HOME/.kube
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+
+# 安装flannel网络插件
+kubectl apply -f ./flannel-0.16.0/kube-flannel.yml
+
+# 在其他节点上跑
+kubeadm join 192.168.114.209:6443 --token 9vg85i.i3fbqqn550xpgqit --discovery-token-ca-cert-hash sha256:647e8b27329e0d0bd711204d44922ac2156b00b942f48a713aff32f612a20f3b
+
+# 实时扩展pod副本
+kubectl scale deployment test-8s --replicas=10
+
+# 实时映射pod端口
+kubectl port-forward [pod name] 8080:8080
+
+# 重新生成加入集群命令
+kubeadm token create --print-join-command
+
+# 重启deployment
+kubectl rollout restart deployment test-k8s-dp      《-----------常用
+
+# 重启statefulset
+kubectl rollout restart statefulset mongodb
+
+# 重启所有
+kubectl rollout restart all
+
+#创建namespace 
+kubectl create namespace mysapce
+
+# 扩容或缩容 Deployment、ReplicaSet、Replication Controller或 Job 中Pod数量。
+kubectl scale --replicas 5 deployment/test-k8s-dp
+
+# 快速打开一个bash，可以访问集群中的资源(★★★★常用★★★★)
+kubectl run -i --tty --image hb.cn/repo/busybox:1.35.0 bb-1350 -- /bin/sh
+kubectl run -i --tty --image hb.cn/repo/busybox:1.28 bb-128 -- /bin/sh
+kubectl run -i --tty --image nginx:1.21.5 ng -- /bin/bash
+
+# 快速使用curl，可以访问集群中的资源
+kubectl run -i --tty --image jgtan/test-k8s:v1 tmp-pod --rm curl web-0.nginx-svc
+kubectl run -i --tty --image nginx:1.21.5 ng-1215 --rm curl nginx-svc
+
+# 快速启动一个mysql-client，可以访问集群中的资源(★★★★常用★★★★)
+kubectl run -i --tty --image hb.cn/repo/mysql:5.7.36 mysql-5736 -- bash 
+
+-- 给mysql master实例(写实例)添加一条数据
+kubectl run -i --tty --image hb.cn/repo/mysql:5.7.36 tmp-mysql --restart=Never --rm -- mysql -h mysql-rw-deploy-0.mysql-svc -u root -e 'insert into bizdb.biz_calendar values (54, 10054)'
+
+-- 访问指定的只读deploy: mysql-rw-deploy-2
+kubectl run -i --tty --image hb.cn/repo/mysql:5.7.36 tmp-mysql --restart=Never --rm -- mysql -h  mysql-rw-deploy-2.mysql-svc -u root -e 'select * from bizdb.biz_calendar'
+
+-- 访问mysql只读服务: mysql-read-svc
+kubectl run -i --tty --image hb.cn/repo/mysql:5.7.36 tmp-mysql --restart=Never --rm -- mysql -h  mysql-read-svc -u root -e 'select * from bizdb.biz_calendar'
+
+#查看master是否参与POD负载： NoSchedule表示不运行pod, <none>表示运行pod
+[root@master ~]# kubectl describe node master |grep Taints
+Taints: node-role.kubernetes.io/master:NoSchedule
+
+[root@master ~]# kubectl describe node master |grep Taints
+Taints: <none>
+
+# 让 master节点参与、不参与POD负载
+kubectl taint nodes master node-role.kubernetes.io/master-
+kubectl taint nodes master node-role.kubernetes.io/master=:NoSchedule
+
+# 重启coredns部署
+kubectl rollout restart deployment coredns -n kube-system
+
+# 重新生成kubeadm join命令
+kubeadm token create --print-join-command
+
+# 在容器里，使用curl命令查看域名对就的IP.
+# curl -v web-0221
+*   Trying 10.1.90.254:80...
+* Connected to web-0221 (10.1.90.254) port 80 (#0) <-------------------- web-0221对应的IP为：10.1.90.254
+> GET / HTTP/1.1
+> Host: web-0221
+> User-Agent: curl/7.74.0
+> Accept: */*
