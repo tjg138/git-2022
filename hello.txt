@@ -1,16 +1,12 @@
 2022年初，在极客学习git三剑客！666
 777
-<<<<<<< HEAD
 
 2103-5 (revised)(third revised)
-=======
 modified in branch: b01
 888
 
 111111111
 222222222
->>>>>>> tmp
-
-update in newtest 2
 
 888888
+update in newtest 4
